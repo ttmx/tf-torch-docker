@@ -1,2 +1,2 @@
-FROM tensorflow/tensorflow:latest-gpu as base
-RUN pip install --no-cache-dir torch torchvision torchaudio
+FROM tensorflow/tensorflow:latest-gpu
+RUN pip install --no-cache-dir torch torchvision torchaudio kaggle
