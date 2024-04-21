@@ -1,44 +1,58 @@
-# Use an official NVIDIA CUDA base image with CUDA 11.8 and cuDNN 8.9
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
 
-# Set a label or maintainer for the Docker image
-LABEL maintainer="you@example.com"
-
-# Avoid warnings by switching to noninteractive
+FROM nvidia/cuda:12.3.0-base-ubuntu22.04 as base
 ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG C.UTF-8
 
-# Update and install software-properties-common for adding repositories
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    && add-apt-repository ppa:deadsnakes/ppa \
-    && apt-get update
+COPY setup.sources.sh /setup.sources.sh
+COPY setup.packages.sh /setup.packages.sh
+COPY gpu.packages.txt /gpu.packages.txt
+RUN /setup.sources.sh
+RUN /setup.packages.sh /gpu.packages.txt
 
-# Install Python 3.10
-RUN apt-get install -y python3.10 python3.10-distutils python3.10-dev
+ARG PYTHON_VERSION=python3.11
+ARG TENSORFLOW_PACKAGE=tf-nightly
+COPY setup.python.sh /setup.python.sh
+COPY gpu.requirements.txt /gpu.requirements.txt
+RUN /setup.python.sh $PYTHON_VERSION /gpu.requirements.txt
+RUN pip install --no-cache-dir ${TENSORFLOW_PACKAGE} 
+# add PyTorch
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 
-# # Create a symbolic link for python3
-# RUN ln -s /usr/bin/python3.10 /usr/bin/python3 && ln -s /usr/bin/python3.10 /usr/bin/python
+COPY setup.cuda.sh /setup.cuda.sh
+RUN /setup.cuda.sh
 
-# Install pip for Python 3.10
-RUN apt-get install -y wget && \
-    wget https://bootstrap.pypa.io/get-pip.py && \
-    python3.10 get-pip.py && \
-    rm get-pip.py
+COPY bashrc /etc/bash.bashrc
+RUN chmod a+rwx /etc/bash.bashrc
 
-# Upgrade pip
-RUN pip install --upgrade pip
+FROM base as jupyter
 
-# Install TensorFlow and PyTorch with GPU support
-RUN pip install tensorflow[and-cuda] && pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+COPY jupyter.requirements.txt /jupyter.requirements.txt
+COPY setup.jupyter.sh /setup.jupyter.sh
+RUN python3 -m pip install --no-cache-dir -r /jupyter.requirements.txt -U
+RUN /setup.jupyter.sh
+COPY jupyter.readme.md /tf/tensorflow-tutorials/README.md
 
-# Revert to a non-interactive frontend
-ENV DEBIAN_FRONTEND=dialog
+WORKDIR /tf
+EXPOSE 8888
 
-# Set the working directory
-WORKDIR /app
+CMD ["bash", "-c", "source /etc/bash.bashrc && jupyter notebook --notebook-dir=/tf --ip 0.0.0.0 --no-browser --allow-root"]
 
-# Optional: Copy your application code with dependencies
-COPY . /app
+FROM base as test
 
-# Command to run on container start
-CMD ["python", "your_script.py"]
+ENV LD_LIBRARY_PATH /usr/local/cuda/lib64/stubs/:$LD_LIBRARY_PATH
+COPY test.import_cpu.sh /test.import_cpu.sh
+RUN /test.import_cpu.sh
