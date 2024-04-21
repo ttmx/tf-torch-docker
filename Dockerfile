@@ -30,7 +30,7 @@ COPY gpu.requirements.txt /gpu.requirements.txt
 RUN /setup.python.sh $PYTHON_VERSION /gpu.requirements.txt
 RUN pip install --no-cache-dir ${TENSORFLOW_PACKAGE} 
 # add PyTorch
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+RUN pip install --no-cache-dir torch torchvision torchaudio
 
 COPY setup.cuda.sh /setup.cuda.sh
 RUN /setup.cuda.sh
